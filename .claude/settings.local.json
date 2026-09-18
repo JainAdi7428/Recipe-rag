@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell($v=\"C:\\\\Users\\\\AdityaJain\\\\venvs\\\\receipy-rag\\\\Scripts\\\\python.exe\"; & $v tests\\\\test_diet.py)"
+    ]
+  }
+}

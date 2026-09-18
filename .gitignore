@@ -1,0 +1,17 @@
+# Build artifacts: the Chroma index and parent store are shipped via the
+# Hugging Face dataset repo (scripts/push_index.py), not through git.
+.artifacts/
+chroma_db/
+*.parquet
+
+# Source data (33 MB + 55 MB, from the Kaggle Epicurious dataset)
+full_format_recipes.json
+epi_r.csv
+
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.env
+.pytest_cache/
+.ipynb_checkpoints/

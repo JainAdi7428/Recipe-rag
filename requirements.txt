@@ -1,0 +1,27 @@
+# Phase 1: ingestion, chunking, embedding, vector store.
+#
+# Deliberately no torch and no sentence-transformers: chromadb bundles
+# all-MiniLM-L6-v2 as an ONNX export, which is the model the spec asks for at a
+# fraction of the memory. That keeps the Streamlit Cloud free tier (~1 GB RAM)
+# viable and avoids torch wheel availability problems on Python 3.14.
+#
+# onnxruntime, tokenizers and huggingface-hub arrive as chromadb dependencies
+# but are imported directly, so they are pinned here explicitly.
+
+chromadb>=1.5,<2
+onnxruntime>=1.20
+tokenizers>=0.20
+numpy>=2.0
+pandas>=2.2
+pyarrow>=17
+huggingface-hub>=0.30
+
+# Phase 2: the judge and the web fallback. gpt-4o-mini is mandated by the spec.
+# No HTML parser: schema.org recipes arrive as JSON-LD inside a script tag, so
+# json + a regex for the tag is enough and beautifulsoup would earn its weight
+# nowhere else in the project.
+openai>=1.50
+requests>=2.32
+
+# The demo UI the spec asks for, deployed on Streamlit Cloud.
+streamlit>=1.38
