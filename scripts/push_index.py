@@ -30,7 +30,10 @@ from recipe_rag import config
 
 
 # What the running app actually reads.
-UPLOAD_PATTERNS = ["chroma_db/*", "chroma_db/**/*", "parents.parquet", "build_report.json"]
+# build_report.json is deliberately absent: it records the absolute paths of
+# the machine that built the index ("C:/Users/<name>/OneDrive - <employer>/"),
+# which has no business being in a hosted dataset. Its numbers are in the docs.
+UPLOAD_PATTERNS = ["chroma_db/*", "chroma_db/**/*", "parents.parquet"]
 
 
 def uploaded_files(root: Path):
@@ -51,7 +54,9 @@ def directory_size_mb(path: Path) -> float:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", required=True, help="e.g. username/recipe-rag-index")
-    parser.add_argument("--private", action="store_true")
+    parser.add_argument("--public", action="store_true",
+                        help="publish the dataset to the whole internet "
+                             "(default: private, visible only to your account)")
     parser.add_argument("--dry-run", action="store_true",
                         help="report what would be uploaded and exit")
     args = parser.parse_args()
@@ -70,6 +75,9 @@ def main() -> int:
     for child, relative in files:
         print(f"  {relative}  {child.stat().st_size / 1024 / 1024:.1f} MB")
 
+    print(f"destination  : https://huggingface.co/datasets/{args.repo}")
+    visibility = "PUBLIC -- anyone can download it" if args.public else "private"
+    print(f"visibility   : {visibility}")
     if args.dry_run:
         print("\ndry run: nothing uploaded")
         return 0
@@ -77,7 +85,7 @@ def main() -> int:
     from huggingface_hub import HfApi
 
     api = HfApi()
-    api.create_repo(args.repo, repo_type="dataset", private=args.private,
+    api.create_repo(args.repo, repo_type="dataset", private=not args.public,
                     exist_ok=True)
     api.upload_folder(
         folder_path=str(config.ARTIFACT_DIR),
@@ -89,7 +97,7 @@ def main() -> int:
         allow_patterns=UPLOAD_PATTERNS,
         commit_message="Recipe RAG index: Chroma children + Parquet parents",
     )
-    print(f"\nuploaded to https://huggingface.co/datasets/{args.repo}")
+    print(f"uploaded to https://huggingface.co/datasets/{args.repo}  [{visibility}]")
     return 0
 
 

@@ -57,9 +57,19 @@ python scripts/push_index.py --repo <you>/recipe-rag-index --dry-run
 python scripts/push_index.py --repo <you>/recipe-rag-index
 ```
 
-The dry run lists exactly what would be uploaded: the Chroma collection, the
-parent table and the build report — 8 files, 361 MB. The browsable SQLite copy,
-the logs and the evaluation output stay local.
+The dry run prints the destination, the visibility and the exact file list
+before anything leaves the machine: 7 files, 361 MB — the Chroma collection and
+the parent table. Everything else stays local, including your query log, the
+missing-recipe log, the 87 MB browsable copy, and `build_report.json`, which
+records the absolute paths of the machine that built the index.
+
+**The dataset is created private.** Pass `--public` to publish it, which is a
+deliberate act rather than a default: it is a redistribution of the Epicurious
+corpus, and it is your account's name on it.
+
+Because it is private, the app needs a read token to fetch it: create one at
+<https://huggingface.co/settings/tokens> and add it to the app's secrets as
+`HF_TOKEN`.
 
 The app pulls it on first start (`ensure_index()` in `app.py`) and caches it for
 the life of the container. Set `RECIPE_RAG_INDEX_REPO` to the repo name; add
@@ -74,6 +84,7 @@ uses, plus the index repo:
 OPENAI_API_KEY = "..."
 SERPER_API_KEY = "..."
 RECIPE_RAG_INDEX_REPO = "<you>/recipe-rag-index"
+HF_TOKEN = "hf_..."          # a read token, since the dataset is private
 
 # only for an Azure OpenAI key:
 AZURE_OPENAI_ENDPOINT = "https://<resource>.openai.azure.com/"
@@ -81,8 +92,13 @@ AZURE_OPENAI_DEPLOYMENT = "gpt-4.1-mini-4"
 AZURE_OPENAI_API_VERSION = "2025-01-01-preview"
 ```
 
-Streamlit exposes top-level secrets as environment variables, which is exactly
-where `config.load_env()` looks, so no code change is needed.
+Every setting in `recipe_rag` is read from environment variables. `app.py`
+copies the secrets into the environment itself (`secrets_to_environment()`),
+before the library is imported, so nothing depends on Streamlit's own habit of
+exporting root-level secrets. Verified by simulating a fresh container: empty
+index folder, the repo name and token supplied *only* as secrets, the machine's
+stored Hugging Face login disabled — the app fetched the private index in 31
+seconds and answered correctly.
 
 ### 4. Deploy
 
@@ -124,6 +140,7 @@ HNSW vectors (107 MB), the parent table and the encoder.
   publisher's own structured data.
 - It does not hide the fallback. A web answer is labelled with the site it came
   from and links to the original page.
-- When nothing can be found it apologises and records the request, which the
-  **Missing recipes** tab reads back — the dataset-expansion loop the spec asks
-  for, visible in the product rather than buried in a log file.
+- When nothing can be found it apologises and records the request in
+  `.artifacts/missing_recipes.log` (one readable line per miss) and
+  `missing_recipes.jsonl` (full record) — the dataset-expansion loop the spec
+  asks for. The log is kept out of the user-facing UI.

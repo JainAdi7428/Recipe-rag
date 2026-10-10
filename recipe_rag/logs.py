@@ -23,17 +23,31 @@ from . import config
 
 QUERY_LOG = config.ARTIFACT_DIR / "query_log.jsonl"
 MISS_LOG = config.ARTIFACT_DIR / "missing_recipes.jsonl"
+# The same misses, one readable line each, for a person opening the file.
+MISS_TEXT_LOG = config.ARTIFACT_DIR / "missing_recipes.log"
+
+
+def _append(path: Path, line: str) -> None:
+    """Append one line. Logging must never take the request down with it."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(line + "\n")
+    except OSError:
+        pass
 
 
 def _write(path: Path, record: dict) -> None:
-    """Append one record. Logging must never take the request down with it."""
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        record = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), **record}
-        with path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(record, ensure_ascii=False, default=_fallback) + "\n")
-    except OSError:
-        pass
+    record = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), **record}
+    _append(path, json.dumps(record, ensure_ascii=False, default=_fallback))
+
+
+def miss_line(record: dict, ts: str) -> str:
+    """'2026-10-10 08:41:07 | tandoori jilaji | stopped at: web_no_recipe | asked: ...'"""
+    dish = (record.get("cleaned") or record.get("query") or "").strip()
+    return (f"{ts.replace('T', ' ')} | {dish} | "
+            f"stopped at: {record.get('failure_stage') or '-'} | "
+            f"asked: {(record.get('query') or '').strip()}")
 
 
 def _fallback(value):
@@ -55,6 +69,7 @@ def log_miss(record: dict) -> None:
     separate files.
     """
     _write(MISS_LOG, record)
+    _append(MISS_TEXT_LOG, miss_line(record, time.strftime("%Y-%m-%dT%H:%M:%S")))
 
 
 def read(path: Path) -> list[dict]:

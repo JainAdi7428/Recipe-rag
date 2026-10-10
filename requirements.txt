@@ -24,4 +24,4 @@ openai>=1.50
 requests>=2.32
 
 # The demo UI the spec asks for, deployed on Streamlit Cloud.
-streamlit>=1.38
+streamlit>=1.50

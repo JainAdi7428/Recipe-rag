@@ -89,6 +89,7 @@ the source right and the recipe wrong, because the top five candidates sat withi
   parents.parquet            18,249 recipes, 27 columns (the full record)
   query_log.jsonl            one line per request
   missing_recipes.jsonl      requests neither source could answer
+  missing_recipes.log        the same misses, one readable line each
   web_eval.json              raw rows behind docs/web-evaluation.md
   browse.sqlite3             optional readable copy for a SQLite viewer
 ```
