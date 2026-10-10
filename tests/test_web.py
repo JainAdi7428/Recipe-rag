@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pandas as pd
 
-from recipe_rag.pipeline import WEB_MIN_COVERAGE
+from recipe_rag.pipeline import WEB_FUZZY_MATCH, WEB_MIN_COVERAGE
 from recipe_rag.query import QueryParser
 from recipe_rag.rerank import Reranker, fields_from
 from recipe_rag.websearch import SearchResult, build_query, page_encoding, rank_results
@@ -58,10 +58,11 @@ def check(condition: bool, message: str, failures: list[str]) -> None:
         failures.append(f"  {message}")
 
 
-def covered(reranker, parsed, title, categories, ingredients, unknown_counts=True):
+def covered(reranker, parsed, title, categories, ingredients, unknown_counts=True,
+            fuzzy=WEB_FUZZY_MATCH):
     score, matched = reranker.coverage_of(
         parsed, *fields_from(title, categories, ingredients),
-        unknown_counts=unknown_counts,
+        unknown_counts=unknown_counts, fuzzy=fuzzy,
     )
     return score, matched
 
@@ -139,6 +140,47 @@ def run() -> int:
                        ["Indian"], ["spinach", "potato", "cumin"])
     check(score < WEB_MIN_COVERAGE,
           f"a different Indian spinach dish must be refused, scored {score:.2f}", failures)
+
+    # --- near-spellings (fuzzy, cutoff WEB_FUZZY_MATCH) -----------------------
+    # Transliterated names have no one spelling; the page is the same dish.
+    dal_page = ("Dal Makhani Recipe (Restaurant Style)", ["Indian"],
+                ["urad dal", "rajma", "butter", "cream"])
+    for request in ("dal makhni", "dalmakhani", "dal Makhani"):
+        score, matched = covered(reranker, parser.parse(request), *dal_page)
+        check(score >= WEB_MIN_COVERAGE,
+              f"{request!r} must accept a Dal Makhani page, scored {score:.2f} {matched}",
+              failures)
+    score, matched = covered(reranker, parser.parse("dal makhni"), *dal_page)
+    check(matched.get("makhni") == "title~makhani",
+          f"a fuzzy hit must say what it matched, got {matched}", failures)
+
+    # Below the cutoff on purpose: one letter in a short word is too much.
+    score, matched = covered(reranker, parser.parse("daal makhani"), *dal_page)
+    check("daal" not in matched,
+          f"'daal' vs 'dal' scores 86 and must stay unmatched at 90, got {matched}",
+          failures)
+    score, matched = covered(reranker, parser.parse("pea soup"), "Pear Soup", [], ["pear"])
+    check("pea" not in matched, f"'pea' must not match 'pear', got {matched}", failures)
+
+    # The guards the coverage gate exists for still hold with fuzzy on.
+    score, _ = covered(reranker, jilaji, "Tandoori Chicken",
+                       ["Chicken", "Indian"], ["chicken", "yogurt", "tandoori masala"])
+    check(score < WEB_MIN_COVERAGE,
+          f"fuzzy must not let Tandoori Chicken answer Jilaji, scored {score:.2f}", failures)
+    # (Whether Moon Pies passes on exact words depends on corpus rarity weights,
+    # which this six-recipe fixture cannot reproduce; what fuzzy must not do is
+    # find "rocks" anywhere or raise the score.)
+    rocks = parser.parse("Deep Fried Moon Rocks")
+    moon_pies = ("Deep Fried Moon Pies", [], ["moon pies", "oil"])
+    score, matched = covered(reranker, rocks, *moon_pies)
+    exact, _ = covered(reranker, rocks, *moon_pies, fuzzy=None)
+    check("rock" not in matched and score == exact,
+          f"fuzzy must not match 'rocks' to Moon Pies, got {matched}", failures)
+
+    # Without the fuzzy argument, behaviour is exactly as before.
+    score, _ = covered(reranker, parser.parse("dal makhni"), *dal_page, fuzzy=None)
+    check(score < WEB_MIN_COVERAGE,
+          f"exact-only scoring must still refuse 'makhni', scored {score:.2f}", failures)
 
     # A request with no distinctive words cannot be judged this way, and must
     # not be blocked by it.

@@ -40,6 +40,8 @@ import math
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 
+from rapidfuzz import fuzz, process
+
 from .query import NON_DISH_TAGS, ParsedQuery, tokenize
 
 # Measured on three sets, which do not agree, so the disagreement is recorded
@@ -70,6 +72,32 @@ TAG_POOL_CAP = 50
 
 def _padded(words) -> str:
     return " " + " ".join(sorted(words)) + " "
+
+
+def fuzzy_field(term: str, cutoff: float, title_words: str, tag_words: str,
+                ingredient_words: str) -> tuple[str, str] | None:
+    """(field, word) where a near-spelling of `term` appears, or None.
+
+    For transliterated dish names, which have no one spelling: "makhni" vs a
+    "Dal Makhani" page scores 92. rapidfuzz's ratio is 2 x shared letters /
+    total letters, so at a cutoff of 90 one extra letter is tolerated only in
+    words of five letters or more -- "pea" vs "pear" (86) and "daal" vs "dal"
+    (86) both stay unmatched.
+
+    The title is also tried as joined pairs of its words, either order, because
+    the title is stored as a sorted set: "dalmakhani" vs "dal" + "makhani".
+    Only the title -- pairing ingredient words would invent matches.
+    """
+    title = title_words.split()
+    joined = [a + b for a in title for b in title if a != b]
+    for where, words in (("title", title + joined), ("tag", tag_words.split()),
+                         ("ingredient", ingredient_words.split())):
+        if not words:
+            continue
+        best = process.extractOne(term, words, scorer=fuzz.ratio, score_cutoff=cutoff)
+        if best:
+            return where, best[0]
+    return None
 
 
 def fields_from(title, categories, ingredients):
@@ -173,8 +201,14 @@ class Reranker:
 
     def coverage_of(self, parsed: ParsedQuery, title_words: str, tag_words: str,
                     ingredient_words: str, tagset: frozenset[str] = frozenset(),
-                    unknown_counts: bool = False) -> tuple[float, dict[str, str]]:
-        """Rarity-weighted share of the request's words present in these fields."""
+                    unknown_counts: bool = False,
+                    fuzzy: float | None = None) -> tuple[float, dict[str, str]]:
+        """Rarity-weighted share of the request's words present in these fields.
+
+        With `fuzzy` (a rapidfuzz ratio, 0-100), a word with no exact match may
+        still count if a near-spelling of it is present -- see fuzzy_field.
+        Fuzzy matches are recorded as e.g. "title~makhani".
+        """
         total = gained = 0.0
         matched: dict[str, str] = {}
         for term in parsed.terms:
@@ -190,6 +224,14 @@ class Reranker:
                 where = "tag"
             elif needle in ingredient_words:
                 where = "ingredient"
+            elif fuzzy is not None:
+                hit = fuzzy_field(term, fuzzy, title_words, tag_words, ingredient_words)
+                if hit is None:
+                    continue
+                where, word = hit
+                gained += weight * FIELD_WEIGHTS[where]
+                matched[term] = f"{where}~{word}"
+                continue
             else:
                 continue
             gained += weight * FIELD_WEIGHTS[where]

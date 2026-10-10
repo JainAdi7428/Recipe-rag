@@ -65,6 +65,12 @@ SOURCE_NOT_FOUND = "not_found"
 # "Deep Fried Moon Pies" answering "Deep Fried Moon Rocks" -- scored 0.68,
 # having matched three of the request's four words. The bar sits above that.
 WEB_MIN_COVERAGE = 0.75
+# A request word with no exact match on the page still counts if a word there
+# scores at least this (rapidfuzz ratio) -- "makhni" vs "Makhani" is 92. Kept
+# high on purpose: at 90 only one extra letter in a 5+ letter word gets
+# through, so "pea" never matches "pear". Spellings this misses ("daal" vs
+# "dal", 86) are left to a later, LLM-judged step rather than a lower bar.
+WEB_FUZZY_MATCH = 90
 # The web leg walks up to four pages. Each is bounded, but they must also be
 # bounded together, or a run of slow publishers eats the 60-second target.
 WEB_TIME_BUDGET = 30.0
@@ -368,6 +374,7 @@ class Pipeline:
                     parsed,
                     *fields_from(recipe.title, recipe.categories, recipe.ingredients),
                     unknown_counts=True,
+                    fuzzy=WEB_FUZZY_MATCH,
                 )
                 if covered < WEB_MIN_COVERAGE:
                     answer.failure_stage = "wrong_dish"
@@ -384,6 +391,11 @@ class Pipeline:
                 f"extracted schema.org Recipe markup from {recipe.domain} "
                 f"(covers {covered:.0%} of the request)"
             )
+            if parsed and parsed.terms:
+                near = [f"{term} ~ {where.split('~')[1]}" for term, where in matched.items()
+                        if "~" in where]
+                if near:
+                    answer.reasons.append(f"matched by near-spelling: {', '.join(near)}")
             return AnswerRecipe(
                 title=recipe.title,
                 ingredients=recipe.ingredients,
