@@ -15,6 +15,8 @@ numpy>=2.0
 pandas>=2.2
 pyarrow>=17
 huggingface-hub>=0.30
+# Fuzzy title matching in recipe_rag/lexical.py.
+rapidfuzz>=3.0
 
 # Phase 2: the judge and the web fallback. gpt-4o-mini is mandated by the spec.
 # No HTML parser: schema.org recipes arrive as JSON-LD inside a script tag, so
